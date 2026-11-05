@@ -25,10 +25,18 @@ bot_lock = threading.Lock()
 bot = KamigamiRobot(DEFAULT_MAC)
 notify_initialized = False
 
-# Cockroach autonomous mode state
+# Cockroach autonomous mode state & safety controls
 cockroach_running = False
 cockroach_thread = None
 cockroach_state = "IDLE"
+bump_threshold = 0.45
+
+
+def check_is_upside_down() -> bool:
+    imu = bot.last_telemetry.get("imu")
+    if imu and "az_g" in imu:
+        return imu["az_g"] < -0.15
+    return False
 
 
 def ensure_telemetry_stream():
@@ -68,7 +76,7 @@ def ensure_telemetry_stream():
 
 
 def cockroach_loop():
-    global cockroach_running, cockroach_state
+    global cockroach_running, cockroach_state, bump_threshold
     speed = 40
     baseline_ax = 0.0
     baseline_ay = 0.0
@@ -99,6 +107,41 @@ def cockroach_loop():
             gy = imu["gy_dps"]
             gz = imu["gz_dps"]
 
+            # Safety Cutoff: Inverted orientation (held upside down)
+            if az < -0.15:
+                if state != "UPSIDE_DOWN":
+                    state = "UPSIDE_DOWN"
+                    cockroach_state = "UPSIDE DOWN (SAFETY HALT)"
+                    with bot_lock:
+                        try:
+                            bot.stop_motors()
+                            bot.set_led(255, 0, 128)
+                        except Exception:
+                            pass
+                time.sleep(0.08)
+                continue
+
+            if state == "UPSIDE_DOWN":
+                if az > 0.35:
+                    cockroach_state = "RIGHTED (RECOVERING...)"
+                    with bot_lock:
+                        try:
+                            bot.stop_motors()
+                            bot.set_led(255, 200, 0)
+                        except Exception:
+                            pass
+                    time.sleep(1.0)
+                    state = "FORWARD"
+                    state_timer = time.time()
+                    with bot_lock:
+                        try:
+                            bot.set_led(0, 255, 80)
+                        except Exception:
+                            pass
+                else:
+                    time.sleep(0.08)
+                    continue
+
             baseline_ax = 0.9 * baseline_ax + 0.1 * ax
             baseline_ay = 0.9 * baseline_ay + 0.1 * ay
             baseline_az = 0.9 * baseline_az + 0.1 * az
@@ -111,7 +154,8 @@ def cockroach_loop():
             gyro_shock = math.hypot(gx, gy, gz)
 
             if state == "FORWARD" and (now - state_timer > 0.35):
-                if accel_shock > 0.48 or abs(d_ax) > 0.40 or gyro_shock > 190.0:
+                # Dynamically scaled bump threshold configured via UI slider
+                if accel_shock > bump_threshold or abs(d_ax) > (bump_threshold * 0.85) or gyro_shock > (bump_threshold * 400.0):
                     hit_detected = True
 
         feature = bot.last_telemetry.get("imu_feature")
@@ -315,6 +359,7 @@ HTML_PAGE = """<!DOCTYPE html>
     <p>Device: KRB0002 (BLE Auto-Discovery) • FW: 2.0.2 (v2 Protocol)</p>
   </div>
   <div class="status-bar">
+    <div id="safetyBadge" class="badge" style="display:none;background:#7f1d1d;border-color:#f85149;color:#ffcdd2;font-weight:700">⚠️ UPSIDE DOWN: MOTORS HALTED</div>
     <div class="badge"><span id="connDot" class="dot"></span><span id="connText">Connecting...</span></div>
     <div class="badge">🔋 <span id="battText">--%</span></div>
     <button onclick="reconnectRobot()">Reconnect</button>
@@ -363,6 +408,23 @@ HTML_PAGE = """<!DOCTYPE html>
     <span style="font-size:12px;color:var(--muted)">
       Runs forward → On bump/impact: stops 2s → reverses a bit → turns L/R randomly → resumes forward.
     </span>
+
+    <div style="background:#131a22;padding:12px;border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;gap:8px">
+      <div class="row">
+        <label for="bumpThreshold" style="font-size:13px;font-weight:600">🛑 Collision Stop Threshold</label>
+        <span id="bumpVal" style="font-family:monospace;color:var(--accent);font-size:13px;font-weight:bold">0.45 g</span>
+      </div>
+      <input type="range" id="bumpThreshold" min="0.20" max="0.90" step="0.05" value="0.45" oninput="onBumpSliderChange(this.value)">
+      <div class="row" style="font-size:11px;color:var(--muted);margin-top:-2px">
+        <span>0.20g (Light Tap)</span>
+        <span>0.45g (Standard)</span>
+        <span>0.90g (Hard Bump)</span>
+      </div>
+    </div>
+
+    <div id="upsideDownWarning" style="display:none;padding:10px 14px;background:#450a0a;border:1px solid #dc2626;border-radius:8px;font-size:12.5px;color:#fca5a5;line-height:1.4">
+      ⚠️ <strong>Safety Cutoff Triggered:</strong> Robot is turned upside down (<span style="font-family:monospace">az &lt; 0</span>). Motors are fully disabled until robot is set right-side up.
+    </div>
 
     <hr style="border:0;border-top:1px solid var(--border);width:100%">
 
@@ -445,13 +507,41 @@ function updateStatusUI(data) {
   if (data.battery !== undefined && data.battery !== null) {
     document.getElementById('battText').textContent = data.battery + '%';
   }
+
+  // Safety cutoff: Upside-down check
+  const safetyBadge = document.getElementById('safetyBadge');
+  const roachWarning = document.getElementById('upsideDownWarning');
+  if (data.upside_down) {
+    if (safetyBadge) safetyBadge.style.display = 'flex';
+    if (roachWarning) roachWarning.style.display = 'block';
+    if (holdTimer) stopHold(false);
+  } else {
+    if (safetyBadge) safetyBadge.style.display = 'none';
+    if (roachWarning) roachWarning.style.display = 'none';
+  }
+
+  // Bump threshold slider sync
+  if (data.bump_threshold !== undefined) {
+    const slider = document.getElementById('bumpThreshold');
+    if (document.activeElement !== slider) {
+      slider.value = data.bump_threshold;
+      document.getElementById('bumpVal').textContent = `${Number(data.bump_threshold).toFixed(2)} g`;
+    }
+  }
+
   if (data.telemetry && data.telemetry.imu) {
     const i = data.telemetry.imu;
     const m = data.telemetry.motor || {mode: 'DIRECT', left_power: 0, right_power: 0};
+    const invNote = data.upside_down ? ' [⚠️ INVERTED]' : '';
     imuBox.textContent =
-      `Accel (g) : X=${i.ax_g >= 0 ? '+' : ''}${i.ax_g.toFixed(3)}  Y=${i.ay_g >= 0 ? '+' : ''}${i.ay_g.toFixed(3)}  Z=${i.az_g >= 0 ? '+' : ''}${i.az_g.toFixed(3)}\\n` +
+      `Accel (g) : X=${i.ax_g >= 0 ? '+' : ''}${i.ax_g.toFixed(3)}  Y=${i.ay_g >= 0 ? '+' : ''}${i.ay_g.toFixed(3)}  Z=${i.az_g >= 0 ? '+' : ''}${i.az_g.toFixed(3)}${invNote}\\n` +
       `Gyro (dps): X=${i.gx_dps >= 0 ? '+' : ''}${i.gx_dps.toFixed(1)}  Y=${i.gy_dps >= 0 ? '+' : ''}${i.gy_dps.toFixed(1)}  Z=${i.gz_dps >= 0 ? '+' : ''}${i.gz_dps.toFixed(1)}\\n` +
       `Motors    : Mode=${m.mode}  Left=${m.left_power}  Right=${m.right_power}`;
+    if (data.upside_down) {
+      imuBox.style.borderColor = '#dc2626';
+    } else {
+      imuBox.style.borderColor = 'var(--border)';
+    }
   }
   if (data.cockroach !== undefined) {
     if (data.cockroach.active) {
@@ -466,6 +556,12 @@ function updateStatusUI(data) {
       btnRoach.classList.remove('active');
     }
   }
+}
+
+function onBumpSliderChange(val) {
+  const v = parseFloat(val);
+  document.getElementById('bumpVal').textContent = `${v.toFixed(2)} g`;
+  api('/api/cockroach/settings', {bump_threshold: v});
 }
 
 async function pollStatus() {
@@ -688,9 +784,17 @@ class ControlHandler(BaseHTTPRequestHandler):
                         batt = bot.read_battery()
                     except Exception:
                         pass
+                upside_down = check_is_upside_down()
+                if upside_down and not cockroach_running:
+                    try:
+                        bot.stop_motors()
+                    except Exception:
+                        pass
             self._send_json({
                 "connected": conn,
                 "battery": batt,
+                "upside_down": upside_down,
+                "bump_threshold": bump_threshold,
                 "telemetry": bot.last_telemetry,
                 "cockroach": {"active": cockroach_running, "state": cockroach_state}
             })
@@ -698,7 +802,7 @@ class ControlHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "Not found"}, 404)
 
     def do_POST(self):
-        global cockroach_running, cockroach_thread
+        global cockroach_running, cockroach_thread, bump_threshold
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length) if length > 0 else b"{}"
         payload = json.loads(raw.decode("utf-8") or "{}")
@@ -713,6 +817,8 @@ class ControlHandler(BaseHTTPRequestHandler):
                 self._send_json({
                     "connected": ok,
                     "battery": batt,
+                    "upside_down": check_is_upside_down(),
+                    "bump_threshold": bump_threshold,
                     "telemetry": bot.last_telemetry,
                     "cockroach": {"active": cockroach_running, "state": cockroach_state}
                 })
@@ -725,6 +831,17 @@ class ControlHandler(BaseHTTPRequestHandler):
                 ensure_telemetry_stream()
 
             try:
+                if path == "/api/cockroach/settings":
+                    if "bump_threshold" in payload:
+                        bump_threshold = max(0.15, min(1.50, float(payload["bump_threshold"])))
+                    self._send_json({
+                        "connected": True,
+                        "bump_threshold": bump_threshold,
+                        "upside_down": check_is_upside_down(),
+                        "cockroach": {"active": cockroach_running, "state": cockroach_state}
+                    })
+                    return
+
                 if path == "/api/cockroach":
                     action = payload.get("action", "toggle")
                     if action == "start" or (action == "toggle" and not cockroach_running):
@@ -736,6 +853,8 @@ class ControlHandler(BaseHTTPRequestHandler):
                         cockroach_running = False
                     self._send_json({
                         "connected": True,
+                        "bump_threshold": bump_threshold,
+                        "upside_down": check_is_upside_down(),
                         "cockroach": {"active": cockroach_running, "state": cockroach_state}
                     })
                     return
@@ -743,6 +862,16 @@ class ControlHandler(BaseHTTPRequestHandler):
                 if path == "/api/drive":
                     if cockroach_running:
                         cockroach_running = False
+                    if check_is_upside_down():
+                        bot.stop_motors()
+                        self._send_json({
+                            "connected": True,
+                            "upside_down": True,
+                            "error": "Safety cutoff: Robot is held upside down! Motors stopped.",
+                            "telemetry": bot.last_telemetry,
+                            "cockroach": {"active": cockroach_running, "state": cockroach_state}
+                        })
+                        return
                     left = int(payload.get("left", 0))
                     right = int(payload.get("right", 0))
                     bot.drive_direct(left, right)
@@ -768,6 +897,8 @@ class ControlHandler(BaseHTTPRequestHandler):
                 self._send_json({
                     "connected": True,
                     "battery": bot.last_telemetry.get("battery"),
+                    "upside_down": check_is_upside_down(),
+                    "bump_threshold": bump_threshold,
                     "telemetry": bot.last_telemetry,
                     "cockroach": {"active": cockroach_running, "state": cockroach_state}
                 })

@@ -23,10 +23,11 @@ from kamigami_cli import DEFAULT_MAC, KamigamiRobot
 
 
 class CockroachBot:
-    def __init__(self, mac: str = DEFAULT_MAC, speed: int = 42):
+    def __init__(self, mac: str = DEFAULT_MAC, speed: int = 42, threshold: float = 0.45):
         self.bot = KamigamiRobot(mac)
         self.running = True
         self.speed = speed
+        self.threshold = threshold
         self.last_hit_time = 0
 
     def connect(self) -> bool:
@@ -84,6 +85,29 @@ class CockroachBot:
                 gy = imu["gy_dps"]
                 gz = imu["gz_dps"]
 
+                # Safety Cutoff: Inverted orientation (held upside down)
+                if az < -0.15:
+                    if state != "UPSIDE_DOWN":
+                        state = "UPSIDE_DOWN"
+                        print("\n⚠️ [UPSIDE DOWN DETECTED!] Inverted orientation (az < 0). Cutting motors immediately for safety.")
+                        self.bot.stop_motors()
+                        self.bot.set_led(255, 0, 128)
+                    time.sleep(0.08)
+                    continue
+
+                if state == "UPSIDE_DOWN":
+                    if az > 0.35:
+                        print("✅ Robot upright again! Resuming in 1.0s...")
+                        self.bot.stop_motors()
+                        self.bot.set_led(255, 200, 0)
+                        time.sleep(1.0)
+                        state = "FORWARD"
+                        state_timer = time.time()
+                        self.bot.set_led(0, 255, 80)
+                    else:
+                        time.sleep(0.08)
+                        continue
+
                 # Track rolling baseline
                 baseline_ax = 0.9 * baseline_ax + 0.1 * ax
                 baseline_ay = 0.9 * baseline_ay + 0.1 * ay
@@ -97,12 +121,11 @@ class CockroachBot:
                 accel_shock = math.hypot(d_ax, d_ay, d_az)
                 gyro_shock = math.hypot(gx, gy, gz)
 
-                # Collision spike detection
-                # When running forward, an obstacle causes a sharp shock (accel > 0.45g delta or sudden gyro rate spike > 180 dps)
+                # Collision spike detection dynamically scaled by self.threshold
                 if state == "FORWARD" and (now - state_timer > 0.35):
-                    if accel_shock > 0.48 or abs(d_ax) > 0.40 or gyro_shock > 190.0:
+                    if accel_shock > self.threshold or abs(d_ax) > (self.threshold * 0.85) or gyro_shock > (self.threshold * 400.0):
                         hit_detected = True
-                        print(f"\n💥 [BUMP DETECTED!] Shock={accel_shock:.2f}g, Gyro={gyro_shock:.1f}°/s")
+                        print(f"\n💥 [BUMP DETECTED!] Shock={accel_shock:.2f}g (threshold {self.threshold:.2f}g), Gyro={gyro_shock:.1f}°/s")
 
             # Check BMI160 hardware interrupt feature as well
             if feature and state == "FORWARD" and (now - state_timer > 0.35):
@@ -175,9 +198,10 @@ def main():
     parser = argparse.ArgumentParser(description="Kamigami Cockroach Simulator")
     parser.add_argument("--mac", default=DEFAULT_MAC, help="Robot MAC address (optional)")
     parser.add_argument("--speed", type=int, default=40, help="Forward motor power (15-63, default 40)")
+    parser.add_argument("--threshold", type=float, default=0.45, help="Collision bump shock threshold in g (default 0.45)")
     args = parser.parse_args()
 
-    bot = CockroachBot(mac=args.mac, speed=args.speed)
+    bot = CockroachBot(mac=args.mac, speed=args.speed, threshold=args.threshold)
 
     def signal_handler(sig, frame):
         bot.running = False
