@@ -68,6 +68,8 @@ class CockroachBot:
         state_timer = time.time()
         turn_dir = 1
         turn_duration = 0.4
+        upside_down_samples = 0
+        stall_samples = 0
 
         while self.running:
             self.process_events()
@@ -85,11 +87,16 @@ class CockroachBot:
                 gy = imu["gy_dps"]
                 gz = imu["gz_dps"]
 
-                # Safety Cutoff: Inverted orientation (held upside down)
-                if az < -0.15:
+                # Safety Cutoff: Inverted orientation (held upside down: sustained az < -0.45g)
+                if az < -0.45:
+                    upside_down_samples += 1
+                else:
+                    upside_down_samples = 0
+
+                if upside_down_samples >= 2:
                     if state != "UPSIDE_DOWN":
                         state = "UPSIDE_DOWN"
-                        print("\n⚠️ [UPSIDE DOWN DETECTED!] Inverted orientation (az < 0). Cutting motors immediately for safety.")
+                        print("\n⚠️ [UPSIDE DOWN DETECTED!] Inverted orientation (az < -0.45g). Cutting motors immediately for safety.")
                         self.bot.stop_motors()
                         self.bot.set_led(255, 0, 128)
                     time.sleep(0.08)
@@ -103,35 +110,43 @@ class CockroachBot:
                         time.sleep(1.0)
                         state = "FORWARD"
                         state_timer = time.time()
+                        stall_samples = 0
                         self.bot.set_led(0, 255, 80)
                     else:
                         time.sleep(0.08)
                         continue
 
-                # Track rolling baseline
-                baseline_ax = 0.9 * baseline_ax + 0.1 * ax
-                baseline_ay = 0.9 * baseline_ay + 0.1 * ay
-                baseline_az = 0.9 * baseline_az + 0.1 * az
+                # Real collision detection (calibrated from threshold, default 0.45)
+                # Normal running stride peaks reach ~2.5g and ~180 dps yaw.
+                # Real impacts exceed 3.0g - 4.5g shock or sharp yaw deflection.
+                peak_shock_thresh = 2.6 + (self.threshold * 2.0)
+                yaw_shock_thresh = 240.0 + (self.threshold * 200.0)
 
-                # Delta from expected running baseline
-                d_ax = ax - baseline_ax
-                d_ay = ay - baseline_ay
-                d_az = az - baseline_az
+                mag = math.hypot(ax, ay, az)
 
-                accel_shock = math.hypot(d_ax, d_ay, d_az)
-                gyro_shock = math.hypot(gx, gy, gz)
+                # Check for robot pushed against obstacle / climbing wall stall
+                if ax > 0.65 or az < 0.20:
+                    stall_samples += 1
+                else:
+                    stall_samples = 0
 
-                # Collision spike detection dynamically scaled by self.threshold
-                if state == "FORWARD" and (now - state_timer > 0.35):
-                    if accel_shock > self.threshold or abs(d_ax) > (self.threshold * 0.85) or gyro_shock > (self.threshold * 400.0):
+                if state == "FORWARD" and (now - state_timer > 0.40):
+                    if mag > peak_shock_thresh:
                         hit_detected = True
-                        print(f"\n💥 [BUMP DETECTED!] Shock={accel_shock:.2f}g (threshold {self.threshold:.2f}g), Gyro={gyro_shock:.1f}°/s")
+                        print(f"\n💥 [BUMP DETECTED!] Shock={mag:.2f}g (threshold {peak_shock_thresh:.2f}g)")
+                    elif abs(gz) > yaw_shock_thresh:
+                        hit_detected = True
+                        print(f"\n💥 [BUMP DETECTED!] Yaw Deflection={abs(gz):.1f}°/s (threshold {yaw_shock_thresh:.1f}°/s)")
+                    elif stall_samples >= 4:
+                        hit_detected = True
+                        print("\n💥 [OBSTACLE BLOCKED!] Front climbing/pushing against wall.")
 
-            # Check BMI160 hardware interrupt feature as well
-            if feature and state == "FORWARD" and (now - state_timer > 0.35):
-                f_type = feature.get("type", "")
-                if f_type in ["SingleTap", "DoubleTap", "HighG", "SignificantMotion"]:
-                    if now - self.last_hit_time > 1.0:
+            # Check BMI160 hardware interrupt feature (consume once, never persist)
+            if feature:
+                self.bot.last_telemetry["imu_feature"] = None
+                if state == "FORWARD" and (now - state_timer > 0.40):
+                    f_type = feature.get("type", "")
+                    if f_type in ["HighG", "SingleTap", "DoubleTap"]:
                         hit_detected = True
                         print(f"\n💥 [HARDWARE IMU INTERRUPT: {f_type}]")
 

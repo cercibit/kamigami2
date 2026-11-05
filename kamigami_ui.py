@@ -35,7 +35,7 @@ bump_threshold = 0.45
 def check_is_upside_down() -> bool:
     imu = bot.last_telemetry.get("imu")
     if imu and "az_g" in imu:
-        return imu["az_g"] < -0.15
+        return imu["az_g"] < -0.45
     return False
 
 
@@ -78,15 +78,14 @@ def ensure_telemetry_stream():
 def cockroach_loop():
     global cockroach_running, cockroach_state, bump_threshold
     speed = 40
-    baseline_ax = 0.0
-    baseline_ay = 0.0
-    baseline_az = 1.0
 
     state = "FORWARD"
     state_timer = time.time()
     turn_dir = 1
     turn_duration = 0.45
     last_hit_time = 0
+    upside_down_samples = 0
+    stall_samples = 0
 
     with bot_lock:
         try:
@@ -107,8 +106,13 @@ def cockroach_loop():
             gy = imu["gy_dps"]
             gz = imu["gz_dps"]
 
-            # Safety Cutoff: Inverted orientation (held upside down)
-            if az < -0.15:
+            # Safety Cutoff: Inverted orientation (held upside down: sustained az < -0.45g)
+            if az < -0.45:
+                upside_down_samples += 1
+            else:
+                upside_down_samples = 0
+
+            if upside_down_samples >= 2:
                 if state != "UPSIDE_DOWN":
                     state = "UPSIDE_DOWN"
                     cockroach_state = "UPSIDE DOWN (SAFETY HALT)"
@@ -133,6 +137,7 @@ def cockroach_loop():
                     time.sleep(1.0)
                     state = "FORWARD"
                     state_timer = time.time()
+                    stall_samples = 0
                     with bot_lock:
                         try:
                             bot.set_led(0, 255, 80)
@@ -142,27 +147,35 @@ def cockroach_loop():
                     time.sleep(0.08)
                     continue
 
-            baseline_ax = 0.9 * baseline_ax + 0.1 * ax
-            baseline_ay = 0.9 * baseline_ay + 0.1 * ay
-            baseline_az = 0.9 * baseline_az + 0.1 * az
+            # Real obstacle collision detection (calibrated from bump_threshold slider)
+            # Normal gait stride peaks reach ~2.5g and ~180 dps yaw.
+            # Real impacts exceed 3.0g - 4.5g shock or sharp yaw deflection.
+            peak_shock_thresh = 2.6 + (bump_threshold * 2.0)
+            yaw_shock_thresh = 240.0 + (bump_threshold * 200.0)
 
-            d_ax = ax - baseline_ax
-            d_ay = ay - baseline_ay
-            d_az = az - baseline_az
+            mag = math.hypot(ax, ay, az)
 
-            accel_shock = math.hypot(d_ax, d_ay, d_az)
-            gyro_shock = math.hypot(gx, gy, gz)
+            # Check for robot pushed against obstacle / climbing wall stall
+            if ax > 0.65 or az < 0.20:
+                stall_samples += 1
+            else:
+                stall_samples = 0
 
-            if state == "FORWARD" and (now - state_timer > 0.35):
-                # Dynamically scaled bump threshold configured via UI slider
-                if accel_shock > bump_threshold or abs(d_ax) > (bump_threshold * 0.85) or gyro_shock > (bump_threshold * 400.0):
+            if state == "FORWARD" and (now - state_timer > 0.40):
+                if mag > peak_shock_thresh:
+                    hit_detected = True
+                elif abs(gz) > yaw_shock_thresh:
+                    hit_detected = True
+                elif stall_samples >= 4:
                     hit_detected = True
 
+        # Hardware BMI160 interrupt event (consume once, never persist)
         feature = bot.last_telemetry.get("imu_feature")
-        if feature and state == "FORWARD" and (now - state_timer > 0.35):
-            f_type = feature.get("type", "")
-            if f_type in ["SingleTap", "DoubleTap", "HighG", "SignificantMotion"]:
-                if now - last_hit_time > 1.0:
+        if feature:
+            bot.last_telemetry["imu_feature"] = None
+            if state == "FORWARD" and (now - state_timer > 0.40):
+                f_type = feature.get("type", "")
+                if f_type in ["HighG", "SingleTap", "DoubleTap"]:
                     hit_detected = True
 
         with bot_lock:
@@ -525,7 +538,9 @@ function updateStatusUI(data) {
     const slider = document.getElementById('bumpThreshold');
     if (document.activeElement !== slider) {
       slider.value = data.bump_threshold;
-      document.getElementById('bumpVal').textContent = `${Number(data.bump_threshold).toFixed(2)} g`;
+      const v = Number(data.bump_threshold);
+      const desc = v <= 0.30 ? ' (Light)' : (v >= 0.70 ? ' (Firm)' : ' (Standard)');
+      document.getElementById('bumpVal').textContent = `${v.toFixed(2)}${desc}`;
     }
   }
 
@@ -560,7 +575,8 @@ function updateStatusUI(data) {
 
 function onBumpSliderChange(val) {
   const v = parseFloat(val);
-  document.getElementById('bumpVal').textContent = `${v.toFixed(2)} g`;
+  const desc = v <= 0.30 ? ' (Light)' : (v >= 0.70 ? ' (Firm)' : ' (Standard)');
+  document.getElementById('bumpVal').textContent = `${v.toFixed(2)}${desc}`;
   api('/api/cockroach/settings', {bump_threshold: v});
 }
 
