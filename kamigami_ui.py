@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
-Kamigami Robot (KRB0002 - Firmware 2.0.2) Interactive Web Dashboard & Manual Controller UI
-Serves a local web interface at http://localhost:8765 with:
-- Virtual 2D Joystick & WASD / Arrow-Key manual driving (Firmware 2.0.2 6-byte MotorDirect)
+Kamigami Robot (Firmware 2.0.2) Interactive Web Dashboard & Controller UI
+Features:
+- Virtual 2D Joystick & WASD / Arrow-Key manual driving
 - Throttle slider (15 - 63)
-- RGB Eye LED color picker & quick presets (Firmware 2.0.2 7-byte EyeColor)
-- Infrared (IR) battle laser trigger (Firmware 2.0.2 3-byte IR)
+- RGB Eye LED color picker & quick presets
+- Infrared (IR) battle laser trigger
 - One-click Choreographed Test Run ("Dance / Patrol")
+- Real-time Cockroach Autonomous Mode (bump detection -> stop 2s -> reverse -> turn -> forward)
 - Live BLE connection status, battery monitor, and 6-axis IMU sensor readout
 """
 import json
+import math
+import random
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +24,11 @@ PORT = 8765
 bot_lock = threading.Lock()
 bot = KamigamiRobot(DEFAULT_MAC)
 notify_initialized = False
+
+# Cockroach autonomous mode state
+cockroach_running = False
+cockroach_thread = None
+cockroach_state = "IDLE"
 
 
 def ensure_telemetry_stream():
@@ -54,9 +62,143 @@ def ensure_telemetry_stream():
         pass
     try:
         bot.configure_imu(accel_scale_code=5, rot_scale_code=0, filtered=True)
-        bot.set_update_frequencies(imu_hz=5, motor_hz=2)
+        bot.set_update_frequencies(imu_hz=10, motor_hz=4)
     except Exception:
         pass
+
+
+def cockroach_loop():
+    global cockroach_running, cockroach_state
+    speed = 40
+    baseline_ax = 0.0
+    baseline_ay = 0.0
+    baseline_az = 1.0
+
+    state = "FORWARD"
+    state_timer = time.time()
+    turn_dir = 1
+    turn_duration = 0.45
+    last_hit_time = 0
+
+    with bot_lock:
+        try:
+            bot.set_led(0, 255, 80)
+        except Exception:
+            pass
+
+    while cockroach_running:
+        now = time.time()
+        imu = bot.last_telemetry.get("imu")
+        hit_detected = False
+
+        if imu:
+            ax = imu["ax_g"]
+            ay = imu["ay_g"]
+            az = imu["az_g"]
+            gx = imu["gx_dps"]
+            gy = imu["gy_dps"]
+            gz = imu["gz_dps"]
+
+            baseline_ax = 0.9 * baseline_ax + 0.1 * ax
+            baseline_ay = 0.9 * baseline_ay + 0.1 * ay
+            baseline_az = 0.9 * baseline_az + 0.1 * az
+
+            d_ax = ax - baseline_ax
+            d_ay = ay - baseline_ay
+            d_az = az - baseline_az
+
+            accel_shock = math.hypot(d_ax, d_ay, d_az)
+            gyro_shock = math.hypot(gx, gy, gz)
+
+            if state == "FORWARD" and (now - state_timer > 0.35):
+                if accel_shock > 0.48 or abs(d_ax) > 0.40 or gyro_shock > 190.0:
+                    hit_detected = True
+
+        feature = bot.last_telemetry.get("imu_feature")
+        if feature and state == "FORWARD" and (now - state_timer > 0.35):
+            f_type = feature.get("type", "")
+            if f_type in ["SingleTap", "DoubleTap", "HighG", "SignificantMotion"]:
+                if now - last_hit_time > 1.0:
+                    hit_detected = True
+
+        with bot_lock:
+            if hit_detected and state == "FORWARD":
+                last_hit_time = now
+                state = "STOP_WAIT"
+                state_timer = now
+                cockroach_state = "PAUSED (WAITING 2S)"
+                try:
+                    bot.stop_motors()
+                    bot.set_led(255, 0, 0)
+                except Exception:
+                    pass
+
+            if state == "STOP_WAIT":
+                try:
+                    bot.stop_motors()
+                except Exception:
+                    pass
+                if now - state_timer >= 2.0:
+                    state = "BACKWARD"
+                    state_timer = now
+                    cockroach_state = "BACKING UP"
+                    try:
+                        bot.set_led(255, 120, 0)
+                    except Exception:
+                        pass
+
+            elif state == "BACKWARD":
+                try:
+                    bot.drive_direct(-speed, -speed)
+                except Exception:
+                    pass
+                if now - state_timer >= 0.45:
+                    try:
+                        bot.stop_motors()
+                    except Exception:
+                        pass
+                    state = "TURN"
+                    state_timer = now
+                    turn_dir = random.choice([-1, 1])
+                    turn_duration = random.uniform(0.35, 0.60)
+                    cockroach_state = f"TURNING {'LEFT' if turn_dir < 0 else 'RIGHT'}"
+
+            elif state == "TURN":
+                left_pwr = -int(speed * turn_dir)
+                right_pwr = int(speed * turn_dir)
+                try:
+                    bot.drive_direct(left_pwr, right_pwr)
+                except Exception:
+                    pass
+                if now - state_timer >= turn_duration:
+                    try:
+                        bot.stop_motors()
+                    except Exception:
+                        pass
+                    state = "FORWARD"
+                    state_timer = now
+                    cockroach_state = "MOVING FORWARD"
+                    try:
+                        bot.set_led(0, 255, 80)
+                    except Exception:
+                        pass
+
+            elif state == "FORWARD":
+                cockroach_state = "MOVING FORWARD"
+                try:
+                    bot.drive_direct(speed, speed)
+                except Exception:
+                    pass
+
+        time.sleep(0.04)
+
+    with bot_lock:
+        cockroach_state = "STOPPED"
+        try:
+            bot.stop_motors()
+            bot.set_led(0, 229, 255)
+        except Exception:
+            pass
 
 
 HTML_PAGE = """<!DOCTYPE html>
@@ -64,7 +206,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kamigami Robot (KRB0002) Control Deck</title>
+<title>Kamigami Robot Control Deck</title>
 <style>
   :root {
     --bg: #0d1117;
@@ -76,6 +218,7 @@ HTML_PAGE = """<!DOCTYPE html>
     --muted: #8b949e;
     --success: #2ea043;
     --danger: #f85149;
+    --warn: #d29922;
   }
   * { box-sizing: border-box; user-select: none; }
   body {
@@ -136,6 +279,9 @@ HTML_PAGE = """<!DOCTYPE html>
   .btn-primary { background: var(--accent2); border-color: var(--accent2); color: #fff; }
   .btn-primary:hover { background: #651fff; }
   .btn-danger { background: #da3633; border-color: #f85149; color: #fff; }
+  .btn-roach { background: #795548; border-color: #8d6e63; color: #fff; }
+  .btn-roach:hover { background: #8d6e63; }
+  .btn-roach.active { background: #4e342e; border-color: var(--accent); box-shadow: 0 0 10px rgba(0, 229, 255, 0.5); }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .color-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
   .swatch { height: 38px; border-radius: 8px; border: 2px solid rgba(255,255,255,0.15); }
@@ -149,6 +295,11 @@ HTML_PAGE = """<!DOCTYPE html>
     font-family: monospace; font-size: 12.5px; background: #090d11;
     padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
     color: #58a6ff; line-height: 1.5;
+  }
+  .roach-box {
+    font-family: monospace; font-size: 13px; background: #1a1512;
+    padding: 10px 14px; border-radius: 8px; border: 1px solid #5d4037;
+    color: #ffcc80; display: flex; align-items: center; justify-content: space-between;
   }
   .kbd {
     background: #0d1117; border: 1px solid var(--border); border-radius: 4px;
@@ -202,8 +353,19 @@ HTML_PAGE = """<!DOCTYPE html>
     <button class="btn-danger" onclick="emergencyStop()">⏹ ALL STOP (SPACE)</button>
   </div>
 
-  <!-- Right Column: LED, IR, & Choreographed Routines -->
+  <!-- Right Column: Cockroach Mode, LED, IR, & Routines -->
   <div class="card">
+    <h2>🪳 Cockroach Autonomous Mode</h2>
+    <div class="roach-box">
+      <span>Status: <strong id="roachStatus">OFF</strong></span>
+      <button id="btnRoach" class="btn-roach" onclick="toggleCockroach()">▶ Start Cockroach Mode</button>
+    </div>
+    <span style="font-size:12px;color:var(--muted)">
+      Runs forward → On bump/impact: stops 2s → reverses a bit → turns L/R randomly → resumes forward.
+    </span>
+
+    <hr style="border:0;border-top:1px solid var(--border);width:100%">
+
     <h2>💡 RGB Eye LED & Actions</h2>
     <div class="color-grid">
       <button class="swatch" style="background:#ff1744" onclick="setLed(255,0,0)" title="Red"></button>
@@ -222,11 +384,8 @@ HTML_PAGE = """<!DOCTYPE html>
       <button onclick="setLed(0,0,0)">LED Off</button>
     </div>
 
-    <hr style="border:0;border-top:1px solid var(--border);width:100%">
-
-    <h2>🔫 Infrared & Choreographed Routines</h2>
     <div class="row">
-      <button class="btn-primary" style="flex:1" onclick="fireIR()">⚡ Fire IR Laser Tag</button>
+      <button class="btn-primary" style="flex:1" onclick="fireIR()">⚡ Fire IR Tag</button>
       <button class="btn-primary" style="flex:1;background:#00897b;border-color:#00897b" onclick="runDemo()">🎬 Run Choreographed Demo</button>
     </div>
 
@@ -241,6 +400,9 @@ HTML_PAGE = """<!DOCTYPE html>
 <script>
 const logBox = document.getElementById('logBox');
 const imuBox = document.getElementById('imuBox');
+const roachStatus = document.getElementById('roachStatus');
+const btnRoach = document.getElementById('btnRoach');
+
 function log(msg) {
   const ts = new Date().toLocaleTimeString();
   logBox.textContent = `[${ts}] ${msg}\\n` + logBox.textContent.split('\\n').slice(0, 3).join('\\n');
@@ -263,33 +425,46 @@ async function api(path, body) {
       body: JSON.stringify(body || {})
     });
     const data = await res.json();
-    if (data.connected !== undefined) updateStatusUI(data.connected, data.battery, data.telemetry);
+    if (data.connected !== undefined) updateStatusUI(data);
     return data;
   } catch (e) {
-    updateStatusUI(false);
+    updateStatusUI({connected: false});
   }
 }
 
-function updateStatusUI(connected, battery, telemetry) {
+function updateStatusUI(data) {
   const dot = document.getElementById('connDot');
   const txt = document.getElementById('connText');
-  if (connected) {
+  if (data.connected) {
     dot.classList.add('online');
     txt.textContent = 'Connected';
   } else {
     dot.classList.remove('online');
     txt.textContent = 'Disconnected (Wake Robot)';
   }
-  if (battery !== undefined && battery !== null) {
-    document.getElementById('battText').textContent = battery + '%';
+  if (data.battery !== undefined && data.battery !== null) {
+    document.getElementById('battText').textContent = data.battery + '%';
   }
-  if (telemetry && telemetry.imu) {
-    const i = telemetry.imu;
-    const m = telemetry.motor || {mode: 'DIRECT', left_power: 0, right_power: 0};
+  if (data.telemetry && data.telemetry.imu) {
+    const i = data.telemetry.imu;
+    const m = data.telemetry.motor || {mode: 'DIRECT', left_power: 0, right_power: 0};
     imuBox.textContent =
       `Accel (g) : X=${i.ax_g >= 0 ? '+' : ''}${i.ax_g.toFixed(3)}  Y=${i.ay_g >= 0 ? '+' : ''}${i.ay_g.toFixed(3)}  Z=${i.az_g >= 0 ? '+' : ''}${i.az_g.toFixed(3)}\\n` +
       `Gyro (dps): X=${i.gx_dps >= 0 ? '+' : ''}${i.gx_dps.toFixed(1)}  Y=${i.gy_dps >= 0 ? '+' : ''}${i.gy_dps.toFixed(1)}  Z=${i.gz_dps >= 0 ? '+' : ''}${i.gz_dps.toFixed(1)}\\n` +
       `Motors    : Mode=${m.mode}  Left=${m.left_power}  Right=${m.right_power}`;
+  }
+  if (data.cockroach !== undefined) {
+    if (data.cockroach.active) {
+      roachStatus.textContent = data.cockroach.state || 'ACTIVE';
+      roachStatus.style.color = '#7ee787';
+      btnRoach.textContent = '⏹ Stop Cockroach Mode';
+      btnRoach.classList.add('active');
+    } else {
+      roachStatus.textContent = 'OFF';
+      roachStatus.style.color = '#ffcc80';
+      btnRoach.textContent = '▶ Start Cockroach Mode';
+      btnRoach.classList.remove('active');
+    }
   }
 }
 
@@ -297,16 +472,25 @@ async function pollStatus() {
   try {
     const res = await fetch('/api/status');
     const data = await res.json();
-    updateStatusUI(data.connected, data.battery, data.telemetry);
+    updateStatusUI(data);
   } catch (e) {}
 }
 setInterval(pollStatus, 800);
 pollStatus();
 
 async function reconnectRobot() {
-  log('Scanning and connecting to KRB0002...');
+  log('Scanning and connecting to robot...');
   const r = await api('/api/connect');
-  log(r && r.connected ? 'Connected to KRB0002!' : 'Could not connect — shake/wake robot first.');
+  log(r && r.connected ? 'Connected!' : 'Could not connect — wake robot first.');
+}
+
+async function toggleCockroach() {
+  const isStarting = btnRoach.textContent.includes('Start');
+  log(isStarting ? 'Starting Cockroach Mode...' : 'Stopping Cockroach Mode...');
+  const res = await api('/api/cockroach', {action: isStarting ? 'start' : 'stop'});
+  if (res && res.cockroach) {
+    log(res.cockroach.active ? '🪳 Cockroach Mode running!' : 'Cockroach Mode stopped.');
+  }
 }
 
 async function setLed(r, g, b) {
@@ -322,20 +506,20 @@ function pickCustomColor(hex) {
 }
 
 async function fireIR() {
-  log('Firing IR Battle Tag (ID=1, Cmd=42)...');
+  log('Firing IR Tag (ID=1, Cmd=42)...');
   await api('/api/ir', {id: 1, cmd: 42});
 }
 
 async function runDemo() {
-  log('Running choreographed test routine on robot...');
+  log('Running choreographed demo routine...');
   await api('/api/demo');
-  log('Choreographed test routine finished!');
+  log('Choreographed demo finished!');
 }
 
 let holdTimer = null;
 function sendDrive(left, right) {
   api('/api/drive', {left: Math.round(left), right: Math.round(right)});
-  log(`MotorDirect -> Left: ${Math.round(left)}, Right: ${Math.round(right)}`);
+  log(`Drive -> Left: ${Math.round(left)}, Right: ${Math.round(right)}`);
 }
 
 function startHold(lSign, rSign) {
@@ -353,6 +537,7 @@ function stopHold(sendStop = true) {
 
 function emergencyStop() {
   stopHold(true);
+  api('/api/cockroach', {action: 'stop'});
   log('ALL STOP sent.');
 }
 
@@ -429,8 +614,8 @@ function updateJoyPos(clientX, clientY) {
 }
 
 function sendJoyDrive() {
-  const normX = joyX / maxR;      // -1 (left) to +1 (right)
-  const normY = -joyY / maxR;     // -1 (back) to +1 (fwd)
+  const normX = joyX / maxR;
+  const normY = -joyY / maxR;
   const p = getMaxPower();
   const l = Math.max(-63, Math.min(63, (normY + normX * 0.8) * p));
   const r = Math.max(-63, Math.min(63, (normY - normX * 0.8) * p));
@@ -503,11 +688,17 @@ class ControlHandler(BaseHTTPRequestHandler):
                         batt = bot.read_battery()
                     except Exception:
                         pass
-            self._send_json({"connected": conn, "battery": batt, "telemetry": bot.last_telemetry})
+            self._send_json({
+                "connected": conn,
+                "battery": batt,
+                "telemetry": bot.last_telemetry,
+                "cockroach": {"active": cockroach_running, "state": cockroach_state}
+            })
         else:
             self._send_json({"error": "Not found"}, 404)
 
     def do_POST(self):
+        global cockroach_running, cockroach_thread
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length) if length > 0 else b"{}"
         payload = json.loads(raw.decode("utf-8") or "{}")
@@ -519,7 +710,12 @@ class ControlHandler(BaseHTTPRequestHandler):
                 if ok:
                     ensure_telemetry_stream()
                 batt = bot.read_battery() if ok else None
-                self._send_json({"connected": ok, "battery": batt, "telemetry": bot.last_telemetry})
+                self._send_json({
+                    "connected": ok,
+                    "battery": batt,
+                    "telemetry": bot.last_telemetry,
+                    "cockroach": {"active": cockroach_running, "state": cockroach_state}
+                })
                 return
 
             if not self._is_connected():
@@ -529,7 +725,24 @@ class ControlHandler(BaseHTTPRequestHandler):
                 ensure_telemetry_stream()
 
             try:
+                if path == "/api/cockroach":
+                    action = payload.get("action", "toggle")
+                    if action == "start" or (action == "toggle" and not cockroach_running):
+                        if not cockroach_running:
+                            cockroach_running = True
+                            cockroach_thread = threading.Thread(target=cockroach_loop, daemon=True)
+                            cockroach_thread.start()
+                    elif action == "stop" or (action == "toggle" and cockroach_running):
+                        cockroach_running = False
+                    self._send_json({
+                        "connected": True,
+                        "cockroach": {"active": cockroach_running, "state": cockroach_state}
+                    })
+                    return
+
                 if path == "/api/drive":
+                    if cockroach_running:
+                        cockroach_running = False
                     left = int(payload.get("left", 0))
                     right = int(payload.get("right", 0))
                     bot.drive_direct(left, right)
@@ -538,6 +751,8 @@ class ControlHandler(BaseHTTPRequestHandler):
                 elif path == "/api/ir":
                     bot.send_ir(int(payload.get("id", 1)), int(payload.get("cmd", 42)))
                 elif path == "/api/demo":
+                    if cockroach_running:
+                        cockroach_running = False
                     for r, g, b in [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 0, 255)]:
                         bot.set_led(r, g, b)
                         time.sleep(0.25)
@@ -549,7 +764,13 @@ class ControlHandler(BaseHTTPRequestHandler):
                     bot.stop_motors()
                     bot.send_ir(1, 99)
                     bot.set_led(0, 255, 255)
-                self._send_json({"connected": True, "battery": bot.last_telemetry.get("battery"), "telemetry": bot.last_telemetry})
+
+                self._send_json({
+                    "connected": True,
+                    "battery": bot.last_telemetry.get("battery"),
+                    "telemetry": bot.last_telemetry,
+                    "cockroach": {"active": cockroach_running, "state": cockroach_state}
+                })
             except Exception as e:
                 self._send_json({"connected": self._is_connected(), "error": str(e)})
 
