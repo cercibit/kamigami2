@@ -35,6 +35,9 @@ bump_threshold = 0.45
 def check_is_upside_down() -> bool:
     imu = bot.last_telemetry.get("imu")
     if imu and "az_g" in imu:
+        # Require fresh telemetry (within 1.5 seconds) to prevent stale false triggers
+        if time.time() - imu.get("ts", 0) > 1.5:
+            return False
         return imu["az_g"] < -0.45
     return False
 
@@ -61,13 +64,25 @@ def ensure_telemetry_stream():
         notify_initialized = True
 
     try:
-        bot.rx_char.StartNotify()
+        import dbus
+        rx_props = dbus.Interface(bot.bus.get_object("org.bluez", bot.rx_path), "org.freedesktop.DBus.Properties")
+        if not bool(rx_props.Get("org.bluez.GattCharacteristic1", "Notifying")):
+            bot.rx_char.StartNotify()
     except Exception:
-        pass
+        try:
+            bot.rx_char.StartNotify()
+        except Exception:
+            pass
     try:
-        bot.batt_char.StartNotify()
+        import dbus
+        batt_props = dbus.Interface(bot.bus.get_object("org.bluez", bot.batt_path), "org.freedesktop.DBus.Properties")
+        if not bool(batt_props.Get("org.bluez.GattCharacteristic1", "Notifying")):
+            bot.batt_char.StartNotify()
     except Exception:
-        pass
+        try:
+            bot.batt_char.StartNotify()
+        except Exception:
+            pass
     try:
         bot.configure_imu(accel_scale_code=5, rot_scale_code=0, filtered=True)
         bot.set_update_frequencies(imu_hz=10, motor_hz=4)
@@ -98,7 +113,7 @@ def cockroach_loop():
         imu = bot.last_telemetry.get("imu")
         hit_detected = False
 
-        if imu:
+        if imu and (now - imu.get("ts", 0) <= 1.5):
             ax = imu["ax_g"]
             ay = imu["ay_g"]
             az = imu["az_g"]
@@ -521,10 +536,11 @@ function updateStatusUI(data) {
     document.getElementById('battText').textContent = data.battery + '%';
   }
 
-  // Safety cutoff: Upside-down check
+  // Safety cutoff: Upside-down check (only when telemetry is live and fresh)
   const safetyBadge = document.getElementById('safetyBadge');
   const roachWarning = document.getElementById('upsideDownWarning');
-  if (data.upside_down) {
+  const isFresh = data.telemetry && data.telemetry.imu && ((Date.now() / 1000 - (data.telemetry.imu.ts || 0)) <= 2.0);
+  if (data.upside_down && data.connected && isFresh) {
     if (safetyBadge) safetyBadge.style.display = 'flex';
     if (roachWarning) roachWarning.style.display = 'block';
     if (holdTimer) stopHold(false);
@@ -546,13 +562,14 @@ function updateStatusUI(data) {
 
   if (data.telemetry && data.telemetry.imu) {
     const i = data.telemetry.imu;
+    const isStale = !isFresh;
     const m = data.telemetry.motor || {mode: 'DIRECT', left_power: 0, right_power: 0};
-    const invNote = data.upside_down ? ' [⚠️ INVERTED]' : '';
+    const invNote = (data.upside_down && !isStale) ? ' [⚠️ INVERTED]' : (isStale ? ' [PAUSED/STALE]' : '');
     imuBox.textContent =
       `Accel (g) : X=${i.ax_g >= 0 ? '+' : ''}${i.ax_g.toFixed(3)}  Y=${i.ay_g >= 0 ? '+' : ''}${i.ay_g.toFixed(3)}  Z=${i.az_g >= 0 ? '+' : ''}${i.az_g.toFixed(3)}${invNote}\\n` +
       `Gyro (dps): X=${i.gx_dps >= 0 ? '+' : ''}${i.gx_dps.toFixed(1)}  Y=${i.gy_dps >= 0 ? '+' : ''}${i.gy_dps.toFixed(1)}  Z=${i.gz_dps >= 0 ? '+' : ''}${i.gz_dps.toFixed(1)}\\n` +
       `Motors    : Mode=${m.mode}  Left=${m.left_power}  Right=${m.right_power}`;
-    if (data.upside_down) {
+    if (data.upside_down && !isStale) {
       imuBox.style.borderColor = '#dc2626';
     } else {
       imuBox.style.borderColor = 'var(--border)';
@@ -778,8 +795,12 @@ class ControlHandler(BaseHTTPRequestHandler):
         try:
             import dbus
             dev_props = dbus.Interface(bot.bus.get_object("org.bluez", bot.dev_path), "org.freedesktop.DBus.Properties")
-            return bool(dev_props.Get("org.bluez.Device1", "Connected"))
+            connected = bool(dev_props.Get("org.bluez.Device1", "Connected"))
+            if not connected:
+                bot.last_telemetry["imu"] = None
+            return connected
         except Exception:
+            bot.last_telemetry["imu"] = None
             return False
 
     def do_GET(self):
@@ -794,6 +815,11 @@ class ControlHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/status":
             with bot_lock:
                 conn = self._is_connected()
+                now = time.time()
+                imu = bot.last_telemetry.get("imu")
+                # Auto-heal / restart stream if connected but stream stalled
+                if conn and (not imu or (now - imu.get("ts", 0) > 2.0)):
+                    ensure_telemetry_stream()
                 batt = bot.last_telemetry.get("battery")
                 if conn and batt is None:
                     try:
