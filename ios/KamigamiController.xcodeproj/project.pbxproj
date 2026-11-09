@@ -1,0 +1,318 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2A3F9A06158B7CEFF604756C /* KamigamiControllerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A362198D8A039EE473E4F80 /* KamigamiControllerApp.swift */; };
+		E07476C5DC1D3BD393EB5AB2 /* KamigamiProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97BA28351A740ECFD4A960EA /* KamigamiProtocol.swift */; };
+		5210DAE494C70D9C7A8EFE5E /* Behaviors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C03B56DC0686F6274507F32 /* Behaviors.swift */; };
+		F65D4822AE4B3CB657D405D6 /* KamigamiBLEManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2492E0DCE25A522D9314C0 /* KamigamiBLEManager.swift */; };
+		602AEF8FFD96797249663E75 /* TiltController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A3F098282DD632416A121CC /* TiltController.swift */; };
+		79A64CBC286EA950DC858796 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53DE02FD2C2B923035223A5E /* ContentView.swift */; };
+		BF9B21F8B6020552222DC9AF /* DriveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8214FC848DCD42BBE5E2E9C2 /* DriveView.swift */; };
+		60AEFA0730D6BB4EF89177C3 /* LightsIRView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EA32AADE791AF71FC71D70F /* LightsIRView.swift */; };
+		14290BC18C0D59CFD19D8870 /* AutonomousView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED42CB3A15C060343B5A48B1 /* AutonomousView.swift */; };
+		E4BC65231D537E2519AE4873 /* TelemetryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 513345598DA2CBEAF482F9CC /* TelemetryView.swift */; };
+		2E6610D68BD03B19E57461C7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1F8B526FD4FF74601EAE797C /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		D2A57DC1D883FD21FB995169 /* Kamigami.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kamigami.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A362198D8A039EE473E4F80 /* KamigamiControllerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KamigamiControllerApp.swift; sourceTree = "<group>"; };
+		97BA28351A740ECFD4A960EA /* KamigamiProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KamigamiProtocol.swift; sourceTree = "<group>"; };
+		8C03B56DC0686F6274507F32 /* Behaviors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Behaviors.swift; sourceTree = "<group>"; };
+		AA2492E0DCE25A522D9314C0 /* KamigamiBLEManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KamigamiBLEManager.swift; sourceTree = "<group>"; };
+		9A3F098282DD632416A121CC /* TiltController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiltController.swift; sourceTree = "<group>"; };
+		53DE02FD2C2B923035223A5E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		8214FC848DCD42BBE5E2E9C2 /* DriveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveView.swift; sourceTree = "<group>"; };
+		4EA32AADE791AF71FC71D70F /* LightsIRView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightsIRView.swift; sourceTree = "<group>"; };
+		ED42CB3A15C060343B5A48B1 /* AutonomousView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutonomousView.swift; sourceTree = "<group>"; };
+		513345598DA2CBEAF482F9CC /* TelemetryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryView.swift; sourceTree = "<group>"; };
+		1F8B526FD4FF74601EAE797C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		468E795CEE90B8118DE785FF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		4F6F5CC3FCCF73F75AE9CCF4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		FAD58DE7366495DB4650CFEF = {
+			isa = PBXGroup;
+			children = (
+				20F4BD606C0F6D1645AE4919 /* KamigamiController */,
+				86024CAD1E83101D97359D73 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		86024CAD1E83101D97359D73 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D2A57DC1D883FD21FB995169 /* Kamigami.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		20F4BD606C0F6D1645AE4919 /* KamigamiController */ = {
+			isa = PBXGroup;
+			children = (
+				5A362198D8A039EE473E4F80 /* KamigamiControllerApp.swift */,
+				83791AAA3ABE9C740744D1DA /* Core */,
+				71947EB35C0711E841BF7221 /* BLE */,
+				91B42EC8C07BA594F68CC4BF /* Views */,
+				0ABC3EB6DE2FF40948B036F0 /* Resources */,
+			);
+			path = KamigamiController;
+			sourceTree = "<group>";
+		};
+		83791AAA3ABE9C740744D1DA /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				97BA28351A740ECFD4A960EA /* KamigamiProtocol.swift */,
+				8C03B56DC0686F6274507F32 /* Behaviors.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		71947EB35C0711E841BF7221 /* BLE */ = {
+			isa = PBXGroup;
+			children = (
+				AA2492E0DCE25A522D9314C0 /* KamigamiBLEManager.swift */,
+				9A3F098282DD632416A121CC /* TiltController.swift */,
+			);
+			path = BLE;
+			sourceTree = "<group>";
+		};
+		91B42EC8C07BA594F68CC4BF /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				53DE02FD2C2B923035223A5E /* ContentView.swift */,
+				8214FC848DCD42BBE5E2E9C2 /* DriveView.swift */,
+				4EA32AADE791AF71FC71D70F /* LightsIRView.swift */,
+				ED42CB3A15C060343B5A48B1 /* AutonomousView.swift */,
+				513345598DA2CBEAF482F9CC /* TelemetryView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		0ABC3EB6DE2FF40948B036F0 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				1F8B526FD4FF74601EAE797C /* Assets.xcassets */,
+				468E795CEE90B8118DE785FF /* Info.plist */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		42AEFBAE01D2DFD981F7DA7D /* KamigamiController */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C372D35921F441D6A2CD034A /* Build configuration list for PBXNativeTarget "KamigamiController" */;
+			buildPhases = (
+				F2AB5FB218DA8B84623F4557 /* Sources */,
+				4F6F5CC3FCCF73F75AE9CCF4 /* Frameworks */,
+				55B558C7EF820E6E00E5993B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KamigamiController;
+			productName = Kamigami;
+			productReference = D2A57DC1D883FD21FB995169 /* Kamigami.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		46F86FAA6BBF9AC94A7E4595 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					42AEFBAE01D2DFD981F7DA7D = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = 7C96AF41ECC7205D1E5031F5 /* Build configuration list for PBXProject "KamigamiController" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = FAD58DE7366495DB4650CFEF;
+			productRefGroup = 86024CAD1E83101D97359D73 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				42AEFBAE01D2DFD981F7DA7D /* KamigamiController */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		55B558C7EF820E6E00E5993B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2E6610D68BD03B19E57461C7 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F2AB5FB218DA8B84623F4557 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2A3F9A06158B7CEFF604756C /* KamigamiControllerApp.swift in Sources */,
+				E07476C5DC1D3BD393EB5AB2 /* KamigamiProtocol.swift in Sources */,
+				5210DAE494C70D9C7A8EFE5E /* Behaviors.swift in Sources */,
+				F65D4822AE4B3CB657D405D6 /* KamigamiBLEManager.swift in Sources */,
+				602AEF8FFD96797249663E75 /* TiltController.swift in Sources */,
+				79A64CBC286EA950DC858796 /* ContentView.swift in Sources */,
+				BF9B21F8B6020552222DC9AF /* DriveView.swift in Sources */,
+				60AEFA0730D6BB4EF89177C3 /* LightsIRView.swift in Sources */,
+				14290BC18C0D59CFD19D8870 /* AutonomousView.swift in Sources */,
+				E4BC65231D537E2519AE4873 /* TelemetryView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		B1DA4861A4EDF5615EC39F07 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				SDKROOT = iphoneos;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		7FFC4D510260A8544E5550E6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				SDKROOT = iphoneos;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		ADF8D10C1FBA999C12F23879 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KamigamiController/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.kamigamicontroller;
+				PRODUCT_NAME = Kamigami;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		6791BF1F1E8A3A0981023556 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KamigamiController/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.kamigamicontroller;
+				PRODUCT_NAME = Kamigami;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		7C96AF41ECC7205D1E5031F5 /* Build configuration list for PBXProject "KamigamiController" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B1DA4861A4EDF5615EC39F07 /* Debug */,
+				7FFC4D510260A8544E5550E6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C372D35921F441D6A2CD034A /* Build configuration list for PBXNativeTarget "KamigamiController" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ADF8D10C1FBA999C12F23879 /* Debug */,
+				6791BF1F1E8A3A0981023556 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+}

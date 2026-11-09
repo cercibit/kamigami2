@@ -1,3 +1,10 @@
 __pycache__/
 *.py[cod]
 timer_app_c/
+
+# iOS / Xcode
+ios/.build/
+ios/.swiftpm/
+xcuserdata/
+*.xcuserstate
+DerivedData/
