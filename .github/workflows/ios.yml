@@ -1,0 +1,25 @@
+name: iOS app
+
+on:
+  push:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  pull_request:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests (protocol + behaviors)
+        working-directory: ios
+        run: swift test
+      - name: Build app for iOS Simulator
+        working-directory: ios
+        run: |
+          xcodebuild build \
+            -project KamigamiController.xcodeproj \
+            -scheme KamigamiController \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
